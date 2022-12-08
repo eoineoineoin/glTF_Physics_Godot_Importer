@@ -7,7 +7,7 @@ const c_ext : String = "extensions"
 
 class PerDocumentPhysicsData:
 	# Additional information per-GLTFDocument that we need to construct physics objects
-	var nodeToGltfNodeMap : Dictionary
+	var nodeToGltfNodeMap : Dictionary #todo.eoin Don't need this. Can use GLTFState.get_scene_node()
 
 class PerNodePhysicsData:
 	# Additional information per-GLTFNode that we need to construct physics objects
@@ -34,9 +34,97 @@ func postSceneConvert(state : GLTFState, root : Node) -> Node:
 	# Recursively traverse root and create rigid bodies and colliders
 	var docData : PerDocumentPhysicsData = state.get_additional_data(extensionName)
 	var newRoot : Node = _recurseCreateCollidersAndBodies(state, docData, root, false)
+	newRoot = _recurseCreateJoints(state, docData, newRoot, newRoot)
+	#dumpTree(newRoot)
 	_fixupNodeOwners(newRoot, root) # todo.eoin What if newRoot != root (i.e. root node has physics data somehow)?
-	#dumpTree(newRoot) 
 	return newRoot
+
+func _recurseCreateJoints(state : GLTFState, docData : PerDocumentPhysicsData, curNode : Node3D, rootNode : Node3D) -> Node3D:
+	for c in curNode.get_children():
+		_recurseCreateJoints(state, docData, c, rootNode)
+
+	var outputNode = curNode
+	if docData.nodeToGltfNodeMap.has(curNode):
+		var gltfNode : GLTFNode = docData.nodeToGltfNodeMap[curNode]
+		var perNodeData : PerNodePhysicsData = gltfNode.get_additional_data(extensionName) 
+		if perNodeData != null:
+			if perNodeData.extensionData.has("joint"):
+				var jointData = perNodeData.extensionData["joint"]
+				var jointNode : Generic6DOFJoint3D = _constructJointLimits(jointData)
+				# We can just add the joint node as a child of curNode, which will provide the
+				# (single) pivot in world space
+				curNode.add_child(jointNode)
+
+				# Now, hook up the connected bodies.  curNode will become constraint bodyA,
+				# while connectedNode will be bodyB.
+				var connectedGlTFNodeIdx : int = jointData["connectedNode"]
+				var connectedNode : Node3D = state.get_scene_node(connectedGlTFNodeIdx)
+				var bodyANode = _getParentBody(curNode)
+				var bodyBNode = _getParentBody(connectedNode)
+				jointNode.node_a = jointNode.get_path_to(bodyANode)
+				jointNode.node_b = jointNode.get_path_to(bodyBNode)
+
+	return outputNode
+
+func _getParentBody(node : Node3D) -> PhysicsBody3D:
+	# For a given node, return the first parent PhysicsBody3D
+	while node != null:
+		if node is PhysicsBody3D:
+			return node
+		node = node.get_parent()
+	return null
+
+func _constructJointLimits(jointData : Dictionary) -> Generic6DOFJoint3D:
+	var joint : Generic6DOFJoint3D = Generic6DOFJoint3D.new()
+	joint.exclude_nodes_from_collision = !jointData.has("enableCollision") or jointData["enableCollision"] == false
+
+	# First, enable all the DOFs
+	joint.set_flag_x(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT, false)
+	joint.set_flag_y(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT, false)
+	joint.set_flag_z(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT, false)
+	joint.set_flag_x(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, false)
+	joint.set_flag_y(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, false)
+	joint.set_flag_z(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, false)
+
+	for limit in jointData["constraints"]:
+		var isLocked = !(limit.has("min") or limit.has("max"))
+		var minLimit = limit["min"] if limit.has("min") else -1e38 #todo.eoin is there an FLT_MIN/FLT_MAX?
+		var maxLimit = limit["max"] if limit.has("max") else 1e38
+		if limit.has("linearAxes"):
+			for axisIdx in limit["linearAxes"]:
+				if axisIdx == 0:
+					joint.set_flag_x(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT, true)
+					if not isLocked:
+						joint.set_param_x(Generic6DOFJoint3D.PARAM_LINEAR_LOWER_LIMIT, minLimit)
+						joint.set_param_x(Generic6DOFJoint3D.PARAM_LINEAR_UPPER_LIMIT, maxLimit)
+				if axisIdx == 1:
+					joint.set_flag_y(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT, true)
+					if not isLocked:
+						joint.set_param_y(Generic6DOFJoint3D.PARAM_LINEAR_LOWER_LIMIT, minLimit)
+						joint.set_param_y(Generic6DOFJoint3D.PARAM_LINEAR_UPPER_LIMIT, maxLimit)
+				if axisIdx == 2:
+					joint.set_flag_z(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT, true)
+					if not isLocked:
+						joint.set_param_z(Generic6DOFJoint3D.PARAM_LINEAR_LOWER_LIMIT, minLimit)
+						joint.set_param_z(Generic6DOFJoint3D.PARAM_LINEAR_UPPER_LIMIT, maxLimit)
+		if limit.has("angularAxes"):
+			for axisIdx in limit["angularAxes"]:
+				if axisIdx == 0:
+					joint.set_flag_x(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, true)
+					if not isLocked:
+						joint.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, minLimit)
+						joint.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, maxLimit)
+				if axisIdx == 1:
+					joint.set_flag_y(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, true)
+					if not isLocked:
+						joint.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, minLimit)
+						joint.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, maxLimit)
+				if axisIdx == 2:
+					joint.set_flag_z(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, true)
+					if not isLocked:
+						joint.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, minLimit)
+						joint.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, maxLimit)
+	return joint
 
 func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPhysicsData, curNode : Node3D, parentHasBody : bool) -> Node3D:
 	# Need to unhook all the children, as we may need to be able to change their parent
@@ -45,7 +133,7 @@ func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPh
 	for c in originalChildren:
 		curNode.remove_child(c)
 	
-	var curNodeHasBody = false
+	var curNodeHasBody = false # todo.eoin This is incorrect for joint nodes
 	if docData.nodeToGltfNodeMap.has(curNode):
 		var gltfNode : GLTFNode = docData.nodeToGltfNodeMap[curNode]
 		curNodeHasBody = gltfNode.get_additional_data(extensionName) != null
