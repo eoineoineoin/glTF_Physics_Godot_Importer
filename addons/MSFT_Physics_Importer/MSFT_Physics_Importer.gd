@@ -15,9 +15,7 @@ class PerNodePhysicsData:
 
 func dumpTree(root : Node, indent=0):
 	# todo.eoin REMOVE. For debugging.
-	var tabs = ""
-	for i in range(indent):
-		tabs = str("    ", tabs)
+	var tabs = "\t".repeat(indent)
 	print(tabs, root.name, " (", root, ") owned by ", root.get_owner())
 	for c in root.get_children():
 		dumpTree(c, indent + 1)
