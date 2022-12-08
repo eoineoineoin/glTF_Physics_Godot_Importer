@@ -1,0 +1,30 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+_global_script_classes=[{
+"base": "GLTFDocumentExtension",
+"class": &"MSFT_Physics",
+"language": &"GDScript",
+"path": "res://addons/MSFT_Physics_Importer/MSFT_Physics_Importer.gd"
+}]
+_global_script_class_icons={
+"MSFT_Physics": ""
+}
+
+[application]
+
+config/name="GodotGltfPhysics"
+run/main_scene="res://ManualPhysicsSetup.tscn"
+config/features=PackedStringArray("4.0", "Forward Plus")
+config/icon="res://icon.svg"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/MSFT_Physics_Importer/plugin.cfg")

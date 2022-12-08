@@ -1,0 +1,43 @@
+[gd_scene load_steps=7 format=3 uid="uid://bw081g4pmuuke"]
+
+[ext_resource type="PackedScene" uid="uid://ck27tkjrsbrdf" path="res://Assets/ConstraintSpaceTest.gltf" id="1_yd8do"]
+[ext_resource type="PackedScene" uid="uid://bh7a364dpcbbd" path="res://Assets/PhysicsTypesParade.gltf" id="2_1apfs"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_1o86e"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_11541"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_5sk3n"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_xkmjy"]
+
+[node name="SimpleGltf" type="Node3D"]
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.965926, 0.258819, 0, -0.258819, 0.965926, 0, 3, 7)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.673116, 0.739537, 0, -0.739537, 0.673116, 0, 0, 0)
+
+[node name="Test_Ground" type="StaticBody3D" parent="."]
+transform = Transform3D(45.2701, 0, 0, 0, 0.209979, 0, 0, 0, 53.9862, 0, -5.72418, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Test_Ground"]
+mesh = SubResource("BoxMesh_1o86e")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Test_Ground"]
+shape = SubResource("BoxShape3D_11541")
+
+[node name="Test_RB" type="RigidBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -7.7064)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Test_RB"]
+shape = SubResource("SphereShape3D_5sk3n")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Test_RB"]
+mesh = SubResource("SphereMesh_xkmjy")
+
+[node name="ConstraintSpaceTest" parent="." instance=ExtResource("1_yd8do")]
+
+[node name="PhysicsTypesParade" parent="." instance=ExtResource("2_1apfs")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5874, -5.61919, 2.41378)
