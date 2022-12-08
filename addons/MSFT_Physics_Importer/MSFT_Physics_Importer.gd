@@ -191,8 +191,8 @@ func _makeTriMeshShapeFromIndex(state : GLTFState, meshIdx : int) -> CollisionSh
 	var gltfMesh : GLTFMesh = state.get_meshes()[meshIdx]
 	var importerMesh : ImporterMesh = gltfMesh.mesh
 	var arrayMesh : ArrayMesh = importerMesh.get_mesh()
-	var convexShape : ConcavePolygonShape3D = arrayMesh.create_trimesh_shape()
-	return makeCollisionShape(convexShape)
+	var concaveShape : ConcavePolygonShape3D = arrayMesh.create_trimesh_shape()
+	return makeCollisionShape(concaveShape)
 
 func toV3(jsonData) -> Vector3:
 	return Vector3(jsonData[0], jsonData[1], jsonData[2])
