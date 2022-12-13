@@ -13,13 +13,6 @@ class PerNodePhysicsData:
 	# Additional information per-GLTFNode that we need to construct physics objects
 	var extensionData : Dictionary
 
-func dumpTree(root : Node, indent=0):
-	# todo.eoin REMOVE. For debugging.
-	var tabs = "\t".repeat(indent)
-	print(tabs, root.name, " (", root, ") owned by ", root.get_owner())
-	for c in root.get_children():
-		dumpTree(c, indent + 1)
-
 func _fixupNodeOwners(curNode : Node, owner : Node):
 	# We have added some nodes to the middle of the scene tree.
 	# Recursively walk the tree and set their owner so that the nodes aren't dropped
@@ -31,12 +24,12 @@ func _fixupNodeOwners(curNode : Node, owner : Node):
 		curNode.set_owner(owner)
 
 func postSceneConvert(state : GLTFState, root : Node) -> Node:
-	# Recursively traverse root and create rigid bodies and colliders
+	# Recursively traverse root and create colliders, bodies, and joints
 	var docData : PerDocumentPhysicsData = state.get_additional_data(extensionName)
 	var newRoot : Node = _recurseCreateCollidersAndBodies(state, docData, root, false)
-	newRoot = _recurseCreateJoints(state, docData, newRoot, newRoot)
-	#dumpTree(newRoot)
-	_fixupNodeOwners(newRoot, root) # todo.eoin What if newRoot != root (i.e. root node has physics data somehow)?
+	#newRoot = _recurseCreateJoints(state, docData, newRoot, newRoot)
+	# newRoot *should* equal root, as it's a container for the whole scene
+	_fixupNodeOwners(newRoot, root)
 	return newRoot
 
 func _recurseCreateJoints(state : GLTFState, docData : PerDocumentPhysicsData, curNode : Node3D, rootNode : Node3D) -> Node3D:
@@ -76,6 +69,7 @@ func _getParentBody(node : Node3D) -> PhysicsBody3D:
 
 func _constructJointLimits(jointData : Dictionary) -> Generic6DOFJoint3D:
 	var joint : Generic6DOFJoint3D = Generic6DOFJoint3D.new()
+	joint.name = "Joint"
 	joint.exclude_nodes_from_collision = !jointData.has("enableCollision") or jointData["enableCollision"] == false
 
 	# First, enable all the DOFs
@@ -90,6 +84,7 @@ func _constructJointLimits(jointData : Dictionary) -> Generic6DOFJoint3D:
 		var isLocked = !(limit.has("min") or limit.has("max"))
 		var minLimit = limit["min"] if limit.has("min") else -1e38 #todo.eoin is there an FLT_MIN/FLT_MAX?
 		var maxLimit = limit["max"] if limit.has("max") else 1e38
+		# todo.eoin There is probably a cleaner way to write this:
 		if limit.has("linearAxes"):
 			for axisIdx in limit["linearAxes"]:
 				if axisIdx == 0:
@@ -133,9 +128,11 @@ func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPh
 	for c in originalChildren:
 		curNode.remove_child(c)
 	
-	var curNodeHasBody = false # todo.eoin This is incorrect for joint nodes
+	var curNodeHasBody = false
 	if docData.nodeToGltfNodeMap.has(curNode):
 		var gltfNode : GLTFNode = docData.nodeToGltfNodeMap[curNode]
+		# todo.eoin This is incorrect for joint nodes, but a joint would either already be a child
+		# of a physics collider or the joint would be constrained to the "world".
 		curNodeHasBody = gltfNode.get_additional_data(extensionName) != null
 
 	var newChildren : Array[Node3D]
@@ -159,7 +156,7 @@ func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPh
 			if rigidBody != null:
 				rigidBody.name = str(curNode.name, "_rigidBody")
 				outputNode = rigidBody
-			elif collisionShape != null:
+			elif collisionShape != null or curNodeHasBody: # curNodeHasBody is true if we have a joint
 				# This node has a collision shape, but no rigid body
 				if parentHasBody:
 					# Just make a dummy container for holding the collider and the original hierarchy
@@ -231,7 +228,8 @@ func makeSphereShape(sphereData : Dictionary) -> CollisionShape3D:
 
 func makeBoxShape(boxData : Dictionary) -> CollisionShape3D:
 	var boxShape : BoxShape3D = BoxShape3D.new()
-	boxShape.size = Vector3(toV3(boxData["size"]))
+	var size = boxData["size"]
+	boxShape.size = Vector3(size[0], size[1], size[2])
 	return makeCollisionShape(boxShape)
 
 func makeCapsuleShape(capsuleData : Dictionary) -> CollisionShape3D:
@@ -264,9 +262,6 @@ func makeTriMeshShape(state : GLTFState, convexData : Dictionary) -> CollisionSh
 	var arrayMesh : ArrayMesh = importerMesh.get_mesh()
 	var concaveShape : ConcavePolygonShape3D = arrayMesh.create_trimesh_shape()
 	return makeCollisionShape(concaveShape)
-
-func toV3(jsonData) -> Vector3:
-	return Vector3(jsonData[0], jsonData[1], jsonData[2])
 
 func makeCollisionShape(shape : Shape3D) -> CollisionShape3D:
 	var collider = CollisionShape3D.new()

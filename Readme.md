@@ -1,0 +1,15 @@
+# Todo
+
+Materials
+Collision filters
+
+# Known issues
+
+Godot Physics does not support mesh-mesh collisions; this plugin will create
+meshes whenever the input file has requested them, even if it may result in a
+collision pair which is unsupported by Godot.
+
+Godot constraint spaces are parameterized on a single world-space transform
+(rather than specifying a coordinate system in the space of each body), which
+implies that the pivots of both bodies are aligned at scene load. When this is
+not the case in the input file, we lose information about the pivot on body B.
