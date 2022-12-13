@@ -20,14 +20,15 @@ func _fixupNodeOwners(curNode : Node, owner : Node):
 	# you can't set_owner() until after your node is a child of the owner. 
 	for c in curNode.get_children():
 		_fixupNodeOwners(c, owner)
+
 	if curNode != owner:
 		curNode.set_owner(owner)
 
 func postSceneConvert(state : GLTFState, root : Node) -> Node:
 	# Recursively traverse root and create colliders, bodies, and joints
 	var docData : PerDocumentPhysicsData = state.get_additional_data(extensionName)
-	var newRoot : Node = _recurseCreateCollidersAndBodies(state, docData, root, false)
-	#newRoot = _recurseCreateJoints(state, docData, newRoot, newRoot)
+	var newRoot : Node = _recurseCreateCollidersAndBodies(state, docData, root, null)
+	newRoot = _recurseCreateJoints(state, docData, newRoot, newRoot)
 	# newRoot *should* equal root, as it's a container for the whole scene
 	_fixupNodeOwners(newRoot, root)
 	return newRoot
@@ -121,65 +122,56 @@ func _constructJointLimits(jointData : Dictionary) -> Generic6DOFJoint3D:
 						joint.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, maxLimit)
 	return joint
 
-func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPhysicsData, curNode : Node3D, parentHasBody : bool) -> Node3D:
+func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPhysicsData, curNode : Node3D, parentBody : CollisionObject3D) -> Node3D:
 	# Need to unhook all the children, as we may need to be able to change their parent
 	var originalChildren : Array[Node3D]
 	originalChildren.append_array(curNode.get_children())
 	for c in originalChildren:
 		curNode.remove_child(c)
-	
-	var curNodeHasBody = false
+
+	# Need to construct one of three hierarchies:
+	# If we see a rigidBody -> make new Rigid body, add curNode child
+	# If we see a collider and we have a rigid body -> add shape to body, descend & return curNode
+	# If we see a collider and no rigid body set -> create new static body, add shape, add curNodeChild
+
+	var outputNode : Node3D = curNode # We may need to add an additional parent to curNode
+	var newChildren : Array[Node3D]
+
 	if docData.nodeToGltfNodeMap.has(curNode):
 		var gltfNode : GLTFNode = docData.nodeToGltfNodeMap[curNode]
 		# todo.eoin This is incorrect for joint nodes, but a joint would either already be a child
 		# of a physics collider or the joint would be constrained to the "world".
-		curNodeHasBody = gltfNode.get_additional_data(extensionName) != null
-
-	var newChildren : Array[Node3D]
-	for c in originalChildren:
-		newChildren.append(_recurseCreateCollidersAndBodies(state, docData, c, parentHasBody or curNodeHasBody))
-
-	var outputNode : Node3D = curNode # We may need to add an additional parent to curNode
-
-	if docData.nodeToGltfNodeMap.has(curNode):
-		var gltfNode : GLTFNode = docData.nodeToGltfNodeMap[curNode]
 		var perNodeData : PerNodePhysicsData = gltfNode.get_additional_data(extensionName)
-		if perNodeData != null:
-			var collisionShape : CollisionShape3D = null
-			var rigidBody : RigidBody3D = null
-
-			if perNodeData.extensionData.has("collider"):
-				collisionShape = createCollider(state, perNodeData.extensionData["collider"])
-			if perNodeData.extensionData.has("rigidBody"):
-				rigidBody = createRigidBody(perNodeData.extensionData["rigidBody"])
-
-			if rigidBody != null:
-				rigidBody.name = str(curNode.name, "_rigidBody")
-				outputNode = rigidBody
-			elif collisionShape != null or curNodeHasBody: # curNodeHasBody is true if we have a joint
-				# This node has a collision shape, but no rigid body
-				if parentHasBody:
-					# Just make a dummy container for holding the collider and the original hierarchy
-					outputNode = Node3D.new()
-					outputNode.name = str(curNode.name, "_colliderContainer")
-				else:
-					# We haven't seen a rigid body or collider in this branch before,
-					# so make a static body, since collision shapes need to be parented to one
-					outputNode = StaticBody3D.new()
-					outputNode.name = str(curNode.name, "_staticBody")
-
-			if collisionShape != null:
-				outputNode.add_child(collisionShape)
-
-			if outputNode != curNode:
-				# Our new node needs to inherit the transform of the curNode,
-				# and curNode should be a child with the identity transform
-				outputNode.transform = curNode.transform
-				outputNode.add_child(curNode)
+		if perNodeData != null and perNodeData.extensionData.has("rigidBody"):
+			parentBody = createRigidBody(perNodeData.extensionData["rigidBody"])
+			parentBody.name = str(curNode.name, "_rigidBody")
+			parentBody.transform = curNode.transform
+			parentBody.add_child(curNode)
+			curNode.transform = Transform3D.IDENTITY
+			outputNode = parentBody
+		if perNodeData != null and perNodeData.extensionData.has("collider"):
+			if parentBody == null:
+				parentBody = StaticBody3D.new()
+				parentBody.name = str(curNode.name, "_staticBody")
+				parentBody.transform = curNode.transform
+				parentBody.add_child(curNode)
 				curNode.transform = Transform3D.IDENTITY
+				outputNode = parentBody
+
+			# Finally, add the collider to the parent body
+			# Seems that if we use parentBody.create_shape_owner() now, the stored shapes will
+			# be lost when converted to a PackedScene. Instead, we have to add a CollisionShape3D
+			# which contains our shape resource.
+			var collider = createColliderObject(state, perNodeData.extensionData["collider"])
+			curNode.add_child(collider)
+
+
+	for c in originalChildren:
+		newChildren.append(_recurseCreateCollidersAndBodies(state, docData, c, parentBody))
 
 	for c in newChildren:
 		outputNode.add_child(c)
+
 	return outputNode
 
 func _get_supported_extensions():
@@ -205,7 +197,15 @@ func createRigidBody(jsonData : Dictionary) -> RigidBody3D:
 	rigidBody.mass = jsonData["mass"]
 	return rigidBody
 
-func createCollider(state : GLTFState, jsonData : Dictionary) -> CollisionShape3D:	
+func createColliderObject(state : GLTFState, jsonData : Dictionary) -> MSFT_CollisionShape:
+	var collisionShape = MSFT_CollisionShape.new()
+	var shape = createColliderShape(state, jsonData)
+	collisionShape.name = "MSFT_CollisionShape"
+	collisionShape.shape = shape
+	shape.reference()
+	return collisionShape
+
+func createColliderShape(state : GLTFState, jsonData : Dictionary) -> Shape3D:
 	if jsonData.has("sphere"):
 		return makeSphereShape(jsonData["sphere"])
 	if jsonData.has("box"):
@@ -221,50 +221,44 @@ func createCollider(state : GLTFState, jsonData : Dictionary) -> CollisionShape3
 	print_debug("Unhandled collider type", jsonData)
 	return null
 
-func makeSphereShape(sphereData : Dictionary) -> CollisionShape3D:
+func makeSphereShape(sphereData : Dictionary) -> Shape3D:
 	var sphereShape : SphereShape3D = SphereShape3D.new()
 	sphereShape.radius = sphereData["radius"]
-	return makeCollisionShape(sphereShape)
+	return sphereShape
 
-func makeBoxShape(boxData : Dictionary) -> CollisionShape3D:
+func makeBoxShape(boxData : Dictionary) -> Shape3D:
 	var boxShape : BoxShape3D = BoxShape3D.new()
 	var size = boxData["size"]
 	boxShape.size = Vector3(size[0], size[1], size[2])
-	return makeCollisionShape(boxShape)
+	return boxShape
 
-func makeCapsuleShape(capsuleData : Dictionary) -> CollisionShape3D:
+func makeCapsuleShape(capsuleData : Dictionary) -> Shape3D:
 	var capsuleShape : CapsuleShape3D = CapsuleShape3D.new()
 	capsuleShape.radius = capsuleData["radius"]
 	# In Godot, it _appears_ the "height" of a capsule is the total end-to-end
 	# distance [citation needed, seems undocumented], while in the glTF file,
 	# the end-to-end distance is (radius + height + radius):
 	capsuleShape.height = capsuleData["height"] + capsuleShape.radius * 2
-	return makeCollisionShape(capsuleShape)
+	return capsuleShape
 
-func makeCylinderShape(cylinderData : Dictionary) -> CollisionShape3D:
+func makeCylinderShape(cylinderData : Dictionary) -> Shape3D:
 	var cylinderShape : CylinderShape3D = CylinderShape3D.new()
 	cylinderShape.height = cylinderData["height"]
 	cylinderShape.radius = cylinderData["radius"]
-	return makeCollisionShape(cylinderShape)
+	return cylinderShape
 
-func makeConvexShape(state : GLTFState, convexData : Dictionary) -> CollisionShape3D:
+func makeConvexShape(state : GLTFState, convexData : Dictionary) -> Shape3D:
 	var meshIdx : int = convexData["mesh"]
 	var gltfMesh : GLTFMesh = state.get_meshes()[meshIdx]
 	var importerMesh : ImporterMesh = gltfMesh.mesh
 	var arrayMesh : ArrayMesh = importerMesh.get_mesh()
 	var convexShape : ConvexPolygonShape3D = arrayMesh.create_convex_shape(true)
-	return makeCollisionShape(convexShape)
+	return convexShape
 
-func makeTriMeshShape(state : GLTFState, convexData : Dictionary) -> CollisionShape3D:
+func makeTriMeshShape(state : GLTFState, convexData : Dictionary) -> Shape3D:
 	var meshIdx : int = convexData["mesh"]
 	var gltfMesh : GLTFMesh = state.get_meshes()[meshIdx]
 	var importerMesh : ImporterMesh = gltfMesh.mesh
 	var arrayMesh : ArrayMesh = importerMesh.get_mesh()
 	var concaveShape : ConcavePolygonShape3D = arrayMesh.create_trimesh_shape()
-	return makeCollisionShape(concaveShape)
-
-func makeCollisionShape(shape : Shape3D) -> CollisionShape3D:
-	var collider = CollisionShape3D.new()
-	collider.shape = shape
-	collider.name = "Collider"
-	return collider
+	return concaveShape

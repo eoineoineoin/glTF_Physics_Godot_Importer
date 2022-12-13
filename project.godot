@@ -9,12 +9,18 @@
 config_version=5
 
 _global_script_classes=[{
+"base": "Node3D",
+"class": &"MSFT_CollisionShape",
+"language": &"GDScript",
+"path": "res://addons/MSFT_Physics_Importer/MSFT_CollisionShape.gd"
+}, {
 "base": "GLTFDocumentExtension",
 "class": &"MSFT_Physics",
 "language": &"GDScript",
 "path": "res://addons/MSFT_Physics_Importer/MSFT_Physics_Importer.gd"
 }]
 _global_script_class_icons={
+"MSFT_CollisionShape": "",
 "MSFT_Physics": ""
 }
 
