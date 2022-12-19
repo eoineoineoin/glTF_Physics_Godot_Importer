@@ -216,8 +216,8 @@ func createColliderShape(state : GLTFState, jsonData : Dictionary) -> Shape3D:
 		return makeCylinderShape(jsonData["cylinder"])
 	if jsonData.has("convex"):
 		return makeConvexShape(state, jsonData["convex"])
-	if jsonData.has("mesh"):
-		return makeTriMeshShape(state, jsonData["mesh"])
+	if jsonData.has("trimesh"):
+		return makeTriMeshShape(state, jsonData["trimesh"])
 	print_debug("Unhandled collider type", jsonData)
 	return null
 
