@@ -6,6 +6,7 @@ class_name MSFT_CollisionShape
 # This is a container very similar to CollisionShape3D, which 
 # does not need to be the immediate child of a CollisionObject3D
 # (i.e., will work for a grandparent CollisionObject3D)
+#<todo.eoin Need to listen for transform-changed signals
 func _ready():
 	if shape == null:
 		return
