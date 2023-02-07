@@ -2,7 +2,8 @@
 extends GLTFDocumentExtension
 class_name MSFT_Physics
 
-const extensionName : String = "MSFT_Physics" 
+const extensionName : String = "MSFT_RigidBodies"
+const collisionPrimitivesExtension : String = "MSFT_CollisionPrimitives"
 const c_ext : String = "extensions"
 
 class PerDocumentPhysicsData:
@@ -17,7 +18,7 @@ func _fixupNodeOwners(curNode : Node, owner : Node):
 	# We have added some nodes to the middle of the scene tree.
 	# Recursively walk the tree and set their owner so that the nodes aren't dropped
 	# from the PackedScene. We need to this after the tree has been reconstructed as
-	# you can't set_owner() until after your node is a child of the owner. 
+	# you can't set_owner() until after your node is a child of the owner.
 	for c in curNode.get_children():
 		_fixupNodeOwners(c, owner)
 
@@ -38,9 +39,9 @@ func _recurseCreateJoints(state : GLTFState, docData : PerDocumentPhysicsData, c
 		_recurseCreateJoints(state, docData, c, rootNode)
 
 	var outputNode = curNode
-	if docData.nodeToGltfNodeMap.has(curNode):
+	if docData != null and docData.nodeToGltfNodeMap.has(curNode):
 		var gltfNode : GLTFNode = docData.nodeToGltfNodeMap[curNode]
-		var perNodeData : PerNodePhysicsData = gltfNode.get_additional_data(extensionName) 
+		var perNodeData : PerNodePhysicsData = gltfNode.get_additional_data(extensionName)
 		if perNodeData != null:
 			if perNodeData.extensionData.has("joint"):
 				var jointData = perNodeData.extensionData["joint"]
@@ -137,7 +138,7 @@ func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPh
 	var outputNode : Node3D = curNode # We may need to add an additional parent to curNode
 	var newChildren : Array[Node3D]
 
-	if docData.nodeToGltfNodeMap.has(curNode):
+	if docData != null and docData.nodeToGltfNodeMap.has(curNode):
 		var gltfNode : GLTFNode = docData.nodeToGltfNodeMap[curNode]
 		# todo.eoin This is incorrect for joint nodes, but a joint would either already be a child
 		# of a physics collider or the joint would be constrained to the "world".
@@ -187,6 +188,10 @@ func _parse_node_extensions(state : GLTFState, gltfNode : GLTFNode, extensions :
 	perNodeData.extensionData = extensions[extensionName]
 	gltfNode.set_additional_data(extensionName, perNodeData)
 
+func _import_preflight(state: GLTFState, extensions: PackedStringArray) -> int:
+	state.set_additional_data(extensionName, PerDocumentPhysicsData.new())
+	return OK
+
 func _import_node(state : GLTFState, gltfNode : GLTFNode, jsonData : Dictionary, node : Node) -> int:
 	var documentPhysics : PerDocumentPhysicsData = state.get_additional_data(extensionName)
 	documentPhysics.nodeToGltfNodeMap[node] = gltfNode
@@ -197,8 +202,9 @@ func createRigidBody(jsonData : Dictionary) -> RigidBody3D:
 	rigidBody.mass = jsonData["mass"]
 	return rigidBody
 
-func createColliderObject(state : GLTFState, jsonData : Dictionary) -> MSFT_CollisionShape:
+func createColliderObject(state : GLTFState, colliderIndex : int) -> MSFT_CollisionShape:
 	var collisionShape = MSFT_CollisionShape.new()
+	var jsonData = state.json.extensions[collisionPrimitivesExtension].colliders[colliderIndex]
 	var shape = createColliderShape(state, jsonData)
 	collisionShape.name = "MSFT_CollisionShape"
 	collisionShape.shape = shape

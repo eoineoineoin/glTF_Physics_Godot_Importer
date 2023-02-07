@@ -21,5 +21,4 @@ func _import_scene(path, flags, options):
 		return null
 
 	var generated_scene = doc.generate_scene(state)
-	#return generated_scene
 	return msft_physics.postSceneConvert(state, generated_scene)
