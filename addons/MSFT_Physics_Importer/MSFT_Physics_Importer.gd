@@ -151,6 +151,7 @@ func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPh
 			curNode.transform = Transform3D.IDENTITY
 			outputNode = parentBody
 		if perNodeData != null and perNodeData.extensionData.has("collider"):
+			var colliderIndex = perNodeData.extensionData["collider"]
 			if parentBody == null:
 				parentBody = StaticBody3D.new()
 				parentBody.name = str(curNode.name, "_staticBody")
@@ -159,11 +160,41 @@ func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPh
 				curNode.transform = Transform3D.IDENTITY
 				outputNode = parentBody
 
+			var collider = createColliderObject(state, colliderIndex)
+
+			# Calculate collision filter info. Godot currently only supports filtering
+			# on a body level, rather than individual shapes, so we'll try to make some
+			# approximation of what is expected:
+			var colliderJSON = state.json.extensions[collisionPrimitivesExtension].colliders[colliderIndex]
+			if colliderJSON.has("collisionSystems"):
+				parentBody.collision_layer = 0
+				for csName in colliderJSON["collisionSystems"]:
+					var layerIdx = _findCollisionSystemByName(csName)
+					if layerIdx != -1:
+						parentBody.collision_layer |= 1 << layerIdx
+					else:
+						push_warning("Unable to find a collision layer named ", csName, ". Configure one in project settings.")
+			if colliderJSON.has("collideWithSystems"):
+				parentBody.collision_mask = 0
+				for csName in colliderJSON["collideWithSystems"]:
+					var layerIdx = _findCollisionSystemByName(csName)
+					if layerIdx != -1:
+						parentBody.collision_mask |= 1 << layerIdx
+					else:
+						push_warning("Unable to find a collision layer named ", csName, ". Configure one in project settings.")
+			if colliderJSON.has("notCollideWithSystems"):
+				parentBody.collision_mask = 0xffffffff
+				for csName in colliderJSON["notCollideWithSystems"]:
+					var layerIdx = _findCollisionSystemByName(csName)
+					if layerIdx != -1:
+						parentBody.collision_mask &= (0xffffffff ^ (1 << layerIdx))
+					else:
+						push_warning("Unable to find a collision layer named ", csName, ". Configure one in project settings.")
+
 			# Finally, add the collider to the parent body
 			# Seems that if we use parentBody.create_shape_owner() now, the stored shapes will
 			# be lost when converted to a PackedScene. Instead, we have to add a CollisionShape3D
 			# which contains our shape resource.
-			var collider = createColliderObject(state, perNodeData.extensionData["collider"])
 			curNode.add_child(collider)
 
 
@@ -275,6 +306,14 @@ func makeTriMeshShape(state : GLTFState, convexData : Dictionary) -> Shape3D:
 	var arrayMesh : ArrayMesh = importerMesh.get_mesh()
 	var concaveShape : ConcavePolygonShape3D = arrayMesh.create_trimesh_shape()
 	return concaveShape
+
+func _findCollisionSystemByName(name : String) -> int:
+	for i in range(32):
+		var layerName = ProjectSettings.get_setting("layer_names/3d_physics/layer_" + str(i + 1))
+		if layerName == name:
+			return i
+	return -1
+
 
 func _arrayToVector3(arr) -> Vector3:
 	return Vector3(arr[0], arr[1], arr[2])
