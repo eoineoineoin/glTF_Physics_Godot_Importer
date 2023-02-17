@@ -199,7 +199,15 @@ func _import_node(state : GLTFState, gltfNode : GLTFNode, jsonData : Dictionary,
 
 func createRigidBody(jsonData : Dictionary) -> RigidBody3D:
 	var rigidBody : RigidBody3D = RigidBody3D.new()
-	rigidBody.mass = jsonData["mass"]
+	if "mass" in jsonData:
+		rigidBody.mass = jsonData["mass"]
+	else:
+		rigidBody.mass = 1
+
+	if "linearVelocity" in jsonData:
+		rigidBody.linear_velocity = _arrayToVector3(jsonData["linearVelocity"])
+	if "angularVelocity" in jsonData:
+		rigidBody.angular_velocity = _arrayToVector3(jsonData["angularVelocity"])
 	return rigidBody
 
 func createColliderObject(state : GLTFState, colliderIndex : int) -> MSFT_CollisionShape:
@@ -234,8 +242,7 @@ func makeSphereShape(sphereData : Dictionary) -> Shape3D:
 
 func makeBoxShape(boxData : Dictionary) -> Shape3D:
 	var boxShape : BoxShape3D = BoxShape3D.new()
-	var size = boxData["size"]
-	boxShape.size = Vector3(size[0], size[1], size[2])
+	boxShape.size = _arrayToVector3(boxData["size"])
 	return boxShape
 
 func makeCapsuleShape(capsuleData : Dictionary) -> Shape3D:
@@ -268,3 +275,6 @@ func makeTriMeshShape(state : GLTFState, convexData : Dictionary) -> Shape3D:
 	var arrayMesh : ArrayMesh = importerMesh.get_mesh()
 	var concaveShape : ConcavePolygonShape3D = arrayMesh.create_trimesh_shape()
 	return concaveShape
+
+func _arrayToVector3(arr) -> Vector3:
+	return Vector3(arr[0], arr[1], arr[2])
