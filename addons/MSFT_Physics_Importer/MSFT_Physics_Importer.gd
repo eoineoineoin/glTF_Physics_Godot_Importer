@@ -235,6 +235,10 @@ func createRigidBody(jsonData : Dictionary) -> RigidBody3D:
 	else:
 		rigidBody.mass = 1
 
+	if "centerOfMass" in jsonData:
+		rigidBody.center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
+		rigidBody.center_of_mass = _arrayToVector3(jsonData["centerOfMass"])
+
 	if "linearVelocity" in jsonData:
 		rigidBody.linear_velocity = _arrayToVector3(jsonData["linearVelocity"])
 	if "angularVelocity" in jsonData:
