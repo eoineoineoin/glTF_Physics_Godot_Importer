@@ -195,8 +195,14 @@ func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPh
 			# Seems that if we use parentBody.create_shape_owner() now, the stored shapes will
 			# be lost when converted to a PackedScene. Instead, we have to add a CollisionShape3D
 			# which contains our shape resource.
-			curNode.add_child(collider)
-
+			if perNodeData.extensionData.has("physicsMaterial"):
+				curNode.add_child(collider)
+			else:
+				# Has no physics material set; this is a trigger object
+				var trigger = Area3D.new()
+				trigger.name = str(curNode.name, "_area3D")
+				trigger.add_child(collider)
+				curNode.add_child(trigger)
 
 	for c in originalChildren:
 		newChildren.append(_recurseCreateCollidersAndBodies(state, docData, c, parentBody))
