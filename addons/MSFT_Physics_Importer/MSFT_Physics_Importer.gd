@@ -2,8 +2,8 @@
 extends GLTFDocumentExtension
 class_name MSFT_Physics
 
-const extensionName : String = "MSFT_RigidBodies"
-const collisionPrimitivesExtension : String = "MSFT_CollisionPrimitives"
+const extensionName : String = "MSFT_rigid_bodies"
+const collisionPrimitivesExtension : String = "MSFT_collision_primitives"
 const c_ext : String = "extensions"
 
 class PerDocumentPhysicsData:
