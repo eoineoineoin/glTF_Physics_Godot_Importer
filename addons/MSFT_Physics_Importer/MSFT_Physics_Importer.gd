@@ -197,6 +197,11 @@ func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPh
 			# which contains our shape resource.
 			if perNodeData.extensionData.has("physicsMaterial"):
 				curNode.add_child(collider)
+
+				# Godot currently only supports a per-body material, so this will
+				# end up using the material of the last-assigned node
+				var materialIndex = perNodeData.extensionData["physicsMaterial"]
+				parentBody.physics_material_override = createPhysicsMaterial(state, materialIndex)
 			else:
 				# Has no physics material set; this is a trigger object
 				var trigger = Area3D.new()
@@ -250,6 +255,17 @@ func createRigidBody(jsonData : Dictionary) -> RigidBody3D:
 	if "angularVelocity" in jsonData:
 		rigidBody.angular_velocity = _arrayToVector3(jsonData["angularVelocity"])
 	return rigidBody
+
+func createPhysicsMaterial(state : GLTFState, materialIndex : int) -> PhysicsMaterial:
+	var material = PhysicsMaterial.new()
+	var jsonData = state.json.extensions[extensionName].physicsMaterials[materialIndex]
+	# Godot only supports a single friction value, so use dynamic friction
+	material.friction = jsonData["dynamicFriction"]
+	material.bounce = jsonData["restitution"]
+	if jsonData.has("frictionCombine") and jsonData["frictionCombine"] == "MAXIMUM":
+		# This seems to be the only material priority that Godot supports
+		material.rough = true
+	return material
 
 func createColliderObject(state : GLTFState, colliderIndex : int) -> MSFT_CollisionShape:
 	var collisionShape = MSFT_CollisionShape.new()
@@ -323,7 +339,6 @@ func _findCollisionSystemByName(name : String) -> int:
 		if layerName == name:
 			return i
 	return -1
-
 
 func _arrayToVector3(arr) -> Vector3:
 	return Vector3(arr[0], arr[1], arr[2])
