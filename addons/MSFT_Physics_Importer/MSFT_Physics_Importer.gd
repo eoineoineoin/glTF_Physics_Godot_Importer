@@ -45,7 +45,7 @@ func _recurseCreateJoints(state : GLTFState, docData : PerDocumentPhysicsData, c
 		if perNodeData != null:
 			if perNodeData.extensionData.has("joint"):
 				var jointData = perNodeData.extensionData["joint"]
-				var jointNode : Generic6DOFJoint3D = _constructJointLimits(jointData)
+				var jointNode : Generic6DOFJoint3D = _constructJointLimits(state, jointData)
 				# We can just add the joint node as a child of curNode, which will provide the
 				# (single) pivot in world space
 				curNode.add_child(jointNode)
@@ -69,7 +69,7 @@ func _getParentBody(node : Node3D) -> PhysicsBody3D:
 		node = node.get_parent()
 	return null
 
-func _constructJointLimits(jointData : Dictionary) -> Generic6DOFJoint3D:
+func _constructJointLimits(state : GLTFState, jointData : Dictionary) -> Generic6DOFJoint3D:
 	var joint : Generic6DOFJoint3D = Generic6DOFJoint3D.new()
 	joint.name = "Joint"
 	joint.exclude_nodes_from_collision = !jointData.has("enableCollision") or jointData["enableCollision"] == false
@@ -82,7 +82,9 @@ func _constructJointLimits(jointData : Dictionary) -> Generic6DOFJoint3D:
 	joint.set_flag_y(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, false)
 	joint.set_flag_z(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, false)
 
-	for limit in jointData["constraints"]:
+	var limitsIdx : int = jointData["jointLimits"]
+	var limits = state.json.extensions[extensionName].physicsJointLimits[limitsIdx]
+	for limit in limits:
 		var isLocked = !(limit.has("min") or limit.has("max"))
 		var minLimit = limit["min"] if limit.has("min") else -1e38 #todo.eoin is there an FLT_MIN/FLT_MAX?
 		var maxLimit = limit["max"] if limit.has("max") else 1e38
