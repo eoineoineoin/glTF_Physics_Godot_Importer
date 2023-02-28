@@ -230,11 +230,11 @@ func _parse_node_extensions(state : GLTFState, gltfNode : GLTFNode, extensions :
 	perNodeData.extensionData = extensions[extensionName]
 	gltfNode.set_additional_data(extensionName, perNodeData)
 
-func _import_preflight(state: GLTFState, extensions: PackedStringArray) -> int:
+func _import_preflight(state: GLTFState, extensions: PackedStringArray) -> Error:
 	state.set_additional_data(extensionName, PerDocumentPhysicsData.new())
 	return OK
 
-func _import_node(state : GLTFState, gltfNode : GLTFNode, jsonData : Dictionary, node : Node) -> int:
+func _import_node(state : GLTFState, gltfNode : GLTFNode, jsonData : Dictionary, node : Node) -> Error:
 	var documentPhysics : PerDocumentPhysicsData = state.get_additional_data(extensionName)
 	documentPhysics.nodeToGltfNodeMap[node] = gltfNode
 	return OK
