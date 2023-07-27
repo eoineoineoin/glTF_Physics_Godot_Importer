@@ -145,15 +145,31 @@ func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPh
 		# todo.eoin This is incorrect for joint nodes, but a joint would either already be a child
 		# of a physics collider or the joint would be constrained to the "world".
 		var perNodeData : PerNodePhysicsData = gltfNode.get_additional_data(extensionName)
-		if perNodeData != null and perNodeData.extensionData.has("rigidBody"):
-			parentBody = createRigidBody(perNodeData.extensionData["rigidBody"])
+		if perNodeData != null and perNodeData.extensionData.has("motion"):
+			parentBody = createRigidBody(perNodeData.extensionData["motion"])
 			parentBody.name = str(curNode.name, "_rigidBody")
 			parentBody.transform = curNode.transform
 			parentBody.add_child(curNode)
 			curNode.transform = Transform3D.IDENTITY
 			outputNode = parentBody
+			
+		if perNodeData != null and perNodeData.extensionData.has("trigger"):
+			var rbTriggerData = perNodeData.extensionData["trigger"]
+			var colliderIdx = rbTriggerData["collider"]
+			var area = Area3D.new()
+			area.name = str(curNode.name, "_trigger") 
+			var collider = createColliderObject(state, colliderIdx)
+			
+			if rbTriggerData.has("collisionFilter"):
+				var filterIdx = rbTriggerData["collisionFilter"]
+				var filterJSON = state.json.extensions[extensionName].collisionFilters[filterIdx]
+				_setFilterInfo(area, filterJSON)
+			area.add_child(collider)
+			curNode.add_child(area)
+
 		if perNodeData != null and perNodeData.extensionData.has("collider"):
-			var colliderIndex = perNodeData.extensionData["collider"]
+			var rbColliderData = perNodeData.extensionData["collider"]
+			var colliderIndex = rbColliderData["collider"]
 			if parentBody == null:
 				parentBody = StaticBody3D.new()
 				parentBody.name = str(curNode.name, "_staticBody")
@@ -167,31 +183,10 @@ func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPh
 			# Calculate collision filter info. Godot currently only supports filtering
 			# on a body level, rather than individual shapes, so we'll try to make some
 			# approximation of what is expected:
-			var colliderJSON = state.json.extensions[collisionPrimitivesExtension].colliders[colliderIndex]
-			if colliderJSON.has("collisionSystems"):
-				parentBody.collision_layer = 0
-				for csName in colliderJSON["collisionSystems"]:
-					var layerIdx = _findCollisionSystemByName(csName)
-					if layerIdx != -1:
-						parentBody.collision_layer |= 1 << layerIdx
-					else:
-						push_warning("Unable to find a collision layer named ", csName, ". Configure one in project settings.")
-			if colliderJSON.has("collideWithSystems"):
-				parentBody.collision_mask = 0
-				for csName in colliderJSON["collideWithSystems"]:
-					var layerIdx = _findCollisionSystemByName(csName)
-					if layerIdx != -1:
-						parentBody.collision_mask |= 1 << layerIdx
-					else:
-						push_warning("Unable to find a collision layer named ", csName, ". Configure one in project settings.")
-			if colliderJSON.has("notCollideWithSystems"):
-				parentBody.collision_mask = 0xffffffff
-				for csName in colliderJSON["notCollideWithSystems"]:
-					var layerIdx = _findCollisionSystemByName(csName)
-					if layerIdx != -1:
-						parentBody.collision_mask &= (0xffffffff ^ (1 << layerIdx))
-					else:
-						push_warning("Unable to find a collision layer named ", csName, ". Configure one in project settings.")
+			if rbColliderData.has("collisionFilter"):
+				var filterIdx = rbColliderData["collisionFilter"]
+				var filterJSON = state.json.extensions[extensionName].collisionFilters[filterIdx]
+				_setFilterInfo(parentBody, filterJSON)
 
 			# Finally, add the collider to the parent body
 			# Seems that if we use parentBody.create_shape_owner() now, the stored shapes will
@@ -241,22 +236,40 @@ func _import_node(state : GLTFState, gltfNode : GLTFNode, jsonData : Dictionary,
 	documentPhysics.nodeToGltfNodeMap[node] = gltfNode
 	return OK
 
-func createRigidBody(jsonData : Dictionary) -> RigidBody3D:
-	var rigidBody : RigidBody3D = RigidBody3D.new()
-	if "mass" in jsonData:
-		rigidBody.mass = jsonData["mass"]
+func createRigidBody(jsonData : Dictionary) -> PhysicsBody3D:
+	if jsonData.has("isKinematic") and jsonData["isKinematic"]:
+		var rigidBody : AnimatableBody3D = AnimatableBody3D.new()
+		if jsonData.has("linearVelocity"):
+			var lv = jsonData["linearVelocity"]
+			rigidBody.constant_linear_velocity = Vector3(lv[0], lv[1], lv[2])
+		if jsonData.has("angularVelocity"):
+			var av = jsonData["angularVelocity"]
+			rigidBody.constant_angular_velocity = Vector3(av[0], av[1], av[2])
+		return rigidBody
 	else:
-		rigidBody.mass = 1
-
-	if "centerOfMass" in jsonData:
-		rigidBody.center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
-		rigidBody.center_of_mass = _arrayToVector3(jsonData["centerOfMass"])
-
-	if "linearVelocity" in jsonData:
-		rigidBody.linear_velocity = _arrayToVector3(jsonData["linearVelocity"])
-	if "angularVelocity" in jsonData:
-		rigidBody.angular_velocity = _arrayToVector3(jsonData["angularVelocity"])
-	return rigidBody
+		var rigidBody : RigidBody3D = RigidBody3D.new()
+		rigidBody.mass = jsonData["mass"]
+		
+		if jsonData.has("centerOfMass"):
+			rigidBody.set_center_of_mass_mode(RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM)
+			var com = jsonData["centerOfMass"]
+			rigidBody.center_of_mass = Vector3(com[0], com[1], com[2])
+		if jsonData.has("linearVelocity"):
+			var lv = jsonData["linearVelocity"]
+			rigidBody.linear_velocity = Vector3(lv[0], lv[1], lv[2])
+		if jsonData.has("angularVelocity"):
+			var av = jsonData["angularVelocity"]
+			rigidBody.angular_velocity = Vector3(av[0], av[1], av[2])
+		if jsonData.has("inertiaDiagonal"):
+			var it = jsonData["inertiaDiagonal"]
+			rigidBody.inertia = Vector3(it[0], it[1], it[2])
+		if jsonData.has("inertiaOrientation"):
+			# TODO: Transform children after they've been added, as Godot currently constructs nodes
+			# with an inertia aligned with the primary object axes.
+			pass
+		if jsonData.has("gravityFactor"):
+			rigidBody.gravity_scale = jsonData["gravityFactor"] 
+		return rigidBody
 
 func createPhysicsMaterial(state : GLTFState, materialIndex : int) -> PhysicsMaterial:
 	var material = PhysicsMaterial.new()
@@ -305,19 +318,61 @@ func makeBoxShape(boxData : Dictionary) -> Shape3D:
 	return boxShape
 
 func makeCapsuleShape(capsuleData : Dictionary) -> Shape3D:
-	var capsuleShape : CapsuleShape3D = CapsuleShape3D.new()
-	capsuleShape.radius = capsuleData["radius"]
-	# In Godot, it _appears_ the "height" of a capsule is the total end-to-end
-	# distance [citation needed, seems undocumented], while in the glTF file,
-	# the end-to-end distance is (radius + height + radius):
-	capsuleShape.height = capsuleData["height"] + capsuleShape.radius * 2
-	return capsuleShape
+	var r1 = 0.25
+	if capsuleData.has("radiusTop"):
+		r1 = capsuleData["radiusTop"]
+	var r2 = 0.25
+	if capsuleData.has("radiusBottom"):
+		r2 = capsuleData["radiusBottom"]
+	var h = 0.5
+	if capsuleData.has("height"):
+		h = capsuleData["height"]
+
+	if r1 == r2:
+		var capsuleShape : CapsuleShape3D = CapsuleShape3D.new()
+		capsuleShape.radius = r1
+		# In Godot, it _appears_ the "height" of a capsule is the total end-to-end
+		# distance [citation needed, seems undocumented], while in the glTF file,
+		# the end-to-end distance is (radius + height + radius):
+		capsuleShape.height = h + r1 * 2
+		return capsuleShape
+	else:
+		const numSegments = 64
+		var convexShape : ConvexPolygonShape3D = ConvexPolygonShape3D.new()
+		var s1 = SphereMesh.new()
+		s1.radial_segments = numSegments
+		s1.radius = r1
+		convexShape.points.append_array(_translate(s1.get_mesh_arrays()[Mesh.ARRAY_VERTEX], Vector3(0, h * 0.5, 0)))
+		var s2 = SphereMesh.new()
+		s2.radial_segments = numSegments
+		s2.radius = r2
+		convexShape.points.append_array(_translate(s2.get_mesh_arrays()[Mesh.ARRAY_VERTEX], Vector3(0, h * -0.5, 0)))
+		return convexShape
 
 func makeCylinderShape(cylinderData : Dictionary) -> Shape3D:
-	var cylinderShape : CylinderShape3D = CylinderShape3D.new()
-	cylinderShape.height = cylinderData["height"]
-	cylinderShape.radius = cylinderData["radius"]
-	return cylinderShape
+	var r1 = 0.25
+	if cylinderData.has("radiusTop"):
+		r1 = cylinderData["radiusTop"]
+	var r2 = 0.25
+	if cylinderData.has("radiusBottom"):
+		r2 = cylinderData["radiusBottom"]
+	var h = 0.5
+	if cylinderData.has("height"):
+		h = cylinderData["height"]
+
+	if r1 == r2:
+		var cylinderShape : CylinderShape3D = CylinderShape3D.new()
+		cylinderShape.height = cylinderData["height"]
+		cylinderShape.radius = r1
+		return cylinderShape
+	else:
+		const numSegments = 64
+		var cylinderMesh = CylinderMesh.new()
+		cylinderMesh.radial_segments = numSegments
+		cylinderMesh.rings = 1
+		cylinderMesh.top_radius = r1
+		cylinderMesh.bottom_radius = r2
+		return cylinderMesh.create_convex_shape(true)
 
 func makeConvexShape(state : GLTFState, convexData : Dictionary) -> Shape3D:
 	var meshIdx : int = convexData["mesh"]
@@ -335,6 +390,15 @@ func makeTriMeshShape(state : GLTFState, convexData : Dictionary) -> Shape3D:
 	var concaveShape : ConcavePolygonShape3D = arrayMesh.create_trimesh_shape()
 	return concaveShape
 
+func _arrayToVector3(arr) -> Vector3:
+	return Vector3(arr[0], arr[1], arr[2])
+
+func _translate(verts: PackedVector3Array, t: Vector3) -> PackedVector3Array:
+	var nv = verts.duplicate()
+	for i in range(nv.size()):
+		nv[i] = nv[i] + t
+	return nv
+
 func _findCollisionSystemByName(name : String) -> int:
 	for i in range(32):
 		var layerName = ProjectSettings.get_setting("layer_names/3d_physics/layer_" + str(i + 1))
@@ -342,5 +406,29 @@ func _findCollisionSystemByName(name : String) -> int:
 			return i
 	return -1
 
-func _arrayToVector3(arr) -> Vector3:
-	return Vector3(arr[0], arr[1], arr[2])
+func _setFilterInfo(collObj: CollisionObject3D, filterJSON: Dictionary):
+	if filterJSON.has("collisionSystems"):
+		collObj.collision_layer = 0
+		for csName in filterJSON["collisionSystems"]:
+			var layerIdx = _findCollisionSystemByName(csName)
+			if layerIdx != -1:
+				collObj.collision_layer |= 1 << layerIdx
+			else:
+				push_warning("Unable to find a collision layer named ", csName, ". Configure one in project settings.")
+	if filterJSON.has("collideWithSystems"):
+		collObj.collision_mask = 0
+		for csName in filterJSON["collideWithSystems"]:
+			var layerIdx = _findCollisionSystemByName(csName)
+			if layerIdx != -1:
+				collObj.collision_mask |= 1 << layerIdx
+			else:
+				push_warning("Unable to find a collision layer named ", csName, ". Configure one in project settings.")
+	if filterJSON.has("notCollideWithSystems"):
+		collObj.collision_mask = 0xffffffff
+		for csName in filterJSON["notCollideWithSystems"]:
+			var layerIdx = _findCollisionSystemByName(csName)
+			if layerIdx != -1:
+				collObj.collision_mask &= (0xffffffff ^ (1 << layerIdx))
+			else:
+				push_warning("Unable to find a collision layer named ", csName, ". Configure one in project settings.")
+	
