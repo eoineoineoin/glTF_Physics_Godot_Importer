@@ -1,13 +1,12 @@
 # About
 
 This is an experimental, very much work-in-progress plugin to validate use of
-the [MSFT_Physics](https://github.com/eoineoineoin/glTF_Physics) glTF extension
+the [KHR_rigid_bodies](https://github.com/eoineoineoin/glTF_Physics) glTF extension
 for adding rigid body support to glTF files
 
 # Todo
 
 Materials
-Collision filters
 
 # Known issues
 

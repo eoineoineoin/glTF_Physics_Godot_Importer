@@ -1,9 +1,9 @@
 @tool
 extends GLTFDocumentExtension
-class_name MSFT_Physics
+class_name KHR_rigid_bodies
 
-const extensionName : String = "MSFT_rigid_bodies"
-const collisionPrimitivesExtension : String = "MSFT_collision_primitives"
+const extensionName : String = "KHR_rigid_bodies"
+const collisionPrimitivesExtension : String = "KHR_collision_shapes"
 const c_ext : String = "extensions"
 
 class PerDocumentPhysicsData:
@@ -155,11 +155,11 @@ func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPh
 			
 		if perNodeData != null and perNodeData.extensionData.has("trigger"):
 			var rbTriggerData = perNodeData.extensionData["trigger"]
-			var colliderIdx = rbTriggerData["collider"]
+			var colliderIdx = rbTriggerData["shape"]
 			var area = Area3D.new()
-			area.name = str(curNode.name, "_trigger") 
+			area.name = str(curNode.name, "_trigger")
 			var collider = createColliderObject(state, colliderIdx)
-			
+
 			if rbTriggerData.has("collisionFilter"):
 				var filterIdx = rbTriggerData["collisionFilter"]
 				var filterJSON = state.json.extensions[extensionName].collisionFilters[filterIdx]
@@ -169,7 +169,7 @@ func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPh
 
 		if perNodeData != null and perNodeData.extensionData.has("collider"):
 			var rbColliderData = perNodeData.extensionData["collider"]
-			var colliderIndex = rbColliderData["collider"]
+			var colliderIndex = rbColliderData["shape"]
 			if parentBody == null:
 				parentBody = StaticBody3D.new()
 				parentBody.name = str(curNode.name, "_staticBody")
@@ -268,7 +268,7 @@ func createRigidBody(jsonData : Dictionary) -> PhysicsBody3D:
 			# with an inertia aligned with the primary object axes.
 			pass
 		if jsonData.has("gravityFactor"):
-			rigidBody.gravity_scale = jsonData["gravityFactor"] 
+			rigidBody.gravity_scale = jsonData["gravityFactor"]
 		return rigidBody
 
 func createPhysicsMaterial(state : GLTFState, materialIndex : int) -> PhysicsMaterial:
@@ -282,11 +282,11 @@ func createPhysicsMaterial(state : GLTFState, materialIndex : int) -> PhysicsMat
 		material.rough = true
 	return material
 
-func createColliderObject(state : GLTFState, colliderIndex : int) -> MSFT_CollisionShape:
-	var collisionShape = MSFT_CollisionShape.new()
-	var jsonData = state.json.extensions[collisionPrimitivesExtension].colliders[colliderIndex]
+func createColliderObject(state : GLTFState, colliderIndex : int) -> KHR_CollisionShape:
+	var collisionShape = KHR_CollisionShape.new()
+	var jsonData = state.json.extensions[collisionPrimitivesExtension].shapes[colliderIndex]
 	var shape = createColliderShape(state, jsonData)
-	collisionShape.name = "MSFT_CollisionShape"
+	collisionShape.name = "KHR_CollisionShape"
 	collisionShape.shape = shape
 	shape.reference()
 	return collisionShape

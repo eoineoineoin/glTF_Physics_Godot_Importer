@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const gltf_extension_const = preload("res://addons/MSFT_Physics_Importer/ImporterExtension.gd")
+const gltf_extension_const = preload("res://addons/KHR_rigid_bodies_Importer/ImporterExtension.gd")
 
 var import_plugin
 

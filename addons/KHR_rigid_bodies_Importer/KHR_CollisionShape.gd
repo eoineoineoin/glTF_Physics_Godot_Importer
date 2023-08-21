@@ -1,5 +1,5 @@
 extends Node3D
-class_name MSFT_CollisionShape
+class_name KHR_CollisionShape
 
 @export var shape : Shape3D
 
