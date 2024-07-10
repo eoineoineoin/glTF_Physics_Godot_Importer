@@ -2,7 +2,7 @@
 extends GLTFDocumentExtension
 class_name KHR_rigid_bodies
 
-const extensionName : String = "KHR_rigid_bodies"
+const extensionName : String = "KHR_physics_rigid_bodies"
 const collisionPrimitivesExtension : String = "KHR_collision_shapes"
 const c_ext : String = "extensions"
 
@@ -74,55 +74,76 @@ func _constructJointLimits(state : GLTFState, jointData : Dictionary) -> Generic
 	joint.name = "Joint"
 	joint.exclude_nodes_from_collision = !jointData.has("enableCollision") or jointData["enableCollision"] == false
 
-	# First, enable all the DOFs
-	joint.set_flag_x(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT, false)
-	joint.set_flag_y(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT, false)
-	joint.set_flag_z(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT, false)
-	joint.set_flag_x(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, false)
-	joint.set_flag_y(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, false)
-	joint.set_flag_z(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, false)
+	var setParams = [
+		func(key, val):
+			joint.set_param_x(key, val),
+		func(key, val):
+			joint.set_param_y(key, val),
+		func(key, val):
+			joint.set_param_z(key, val)
+	]
+	var setFlags = [
+		func(key, val):
+			joint.set_flag_x(key, val),
+		func(key, val):
+			joint.set_flag_y(key, val),
+		func(key, val):
+			joint.set_flag_z(key, val)
+	]
 
-	var limitsIdx : int = jointData["jointLimits"]
-	var limits = state.json.extensions[extensionName].physicsJointLimits[limitsIdx]
-	for limit in limits:
+	# First, enable all the DOFs
+	for setFlag in setFlags:
+		setFlag.call(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT, false)
+		setFlag.call(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, false)
+
+	var jointDescIdx : int = jointData["joint"]
+	var jointDesc = state.json.extensions[extensionName].physicsJoints[jointDescIdx]
+	for limit in jointDesc.limits:
 		var isLocked = !(limit.has("min") or limit.has("max"))
 		var minLimit = limit["min"] if limit.has("min") else -1e38 #todo.eoin is there an FLT_MIN/FLT_MAX?
 		var maxLimit = limit["max"] if limit.has("max") else 1e38
 		# todo.eoin There is probably a cleaner way to write this:
 		if limit.has("linearAxes"):
 			for axisIdx in limit["linearAxes"]:
-				if axisIdx == 0:
-					joint.set_flag_x(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT, true)
-					if not isLocked:
-						joint.set_param_x(Generic6DOFJoint3D.PARAM_LINEAR_LOWER_LIMIT, minLimit)
-						joint.set_param_x(Generic6DOFJoint3D.PARAM_LINEAR_UPPER_LIMIT, maxLimit)
-				if axisIdx == 1:
-					joint.set_flag_y(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT, true)
-					if not isLocked:
-						joint.set_param_y(Generic6DOFJoint3D.PARAM_LINEAR_LOWER_LIMIT, minLimit)
-						joint.set_param_y(Generic6DOFJoint3D.PARAM_LINEAR_UPPER_LIMIT, maxLimit)
-				if axisIdx == 2:
-					joint.set_flag_z(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT, true)
-					if not isLocked:
-						joint.set_param_z(Generic6DOFJoint3D.PARAM_LINEAR_LOWER_LIMIT, minLimit)
-						joint.set_param_z(Generic6DOFJoint3D.PARAM_LINEAR_UPPER_LIMIT, maxLimit)
+				setFlags[axisIdx].call(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_LIMIT, true)
+				if not isLocked:
+					setParams[axisIdx].call(Generic6DOFJoint3D.PARAM_LINEAR_LOWER_LIMIT, minLimit)
+					setParams[axisIdx].call(Generic6DOFJoint3D.PARAM_LINEAR_UPPER_LIMIT, maxLimit)
 		if limit.has("angularAxes"):
 			for axisIdx in limit["angularAxes"]:
-				if axisIdx == 0:
-					joint.set_flag_x(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, true)
-					if not isLocked:
-						joint.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, minLimit)
-						joint.set_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, maxLimit)
-				if axisIdx == 1:
-					joint.set_flag_y(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, true)
-					if not isLocked:
-						joint.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, minLimit)
-						joint.set_param_y(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, maxLimit)
-				if axisIdx == 2:
-					joint.set_flag_z(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, true)
-					if not isLocked:
-						joint.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, minLimit)
-						joint.set_param_z(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, maxLimit)
+				setFlags[axisIdx].call(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_LIMIT, true)
+				if not isLocked:
+					setParams[axisIdx].call(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT, minLimit)
+					setParams[axisIdx].call(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT, maxLimit)
+
+	# Constraint drives have UI options, but their functionality is not implemented and does not function:
+	# https://github.com/godotengine/godot/issues/61637
+	for drive in jointDesc.drives:
+		# TODO: Godot has an unusal arrangement for these parameters; relationship between the 
+		# driving modes doesn't appear to be easily seperable and their behaviour is undocumented.
+		# Verify or recalculate values that match the drive description correctly.
+		if drive.type == "linear":
+			setParams[drive.axis].call(Generic6DOFJoint3D.PARAM_LINEAR_SPRING_EQUILIBRIUM_POINT, drive.positionTarget)
+			setParams[drive.axis].call(Generic6DOFJoint3D.PARAM_LINEAR_SPRING_STIFFNESS, drive.stiffness)
+			setParams[drive.axis].call(Generic6DOFJoint3D.PARAM_LINEAR_MOTOR_TARGET_VELOCITY, drive.velocityTarget)
+			setParams[drive.axis].call(Generic6DOFJoint3D.PARAM_LINEAR_SPRING_DAMPING, drive.damping)
+			if drive.has("maxForce"):
+				setParams[drive.axis].call(Generic6DOFJoint3D.PARAM_LINEAR_MOTOR_FORCE_LIMIT, drive.maxForce)
+			else:
+				setParams[drive.axis].call(Generic6DOFJoint3D.PARAM_LINEAR_MOTOR_FORCE_LIMIT, 1.0e38)
+			setFlags[drive.axis].call(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_MOTOR, true)
+			setFlags[drive.axis].call(Generic6DOFJoint3D.FLAG_ENABLE_LINEAR_SPRING, true)
+		elif drive.type == "angular":
+			setParams[drive.axis].call(Generic6DOFJoint3D.PARAM_LINEAR_SPRING_EQUILIBRIUM_POINT, drive.positionTarget)
+			setParams[drive.axis].call(Generic6DOFJoint3D.PARAM_LINEAR_SPRING_STIFFNESS, drive.stiffness)
+			setParams[drive.axis].call(Generic6DOFJoint3D.PARAM_LINEAR_MOTOR_TARGET_VELOCITY, drive.velocityTarget)
+			setParams[drive.axis].call(Generic6DOFJoint3D.PARAM_ANGULAR_SPRING_DAMPING, drive.damping)
+			if drive.has("maxForce"):
+				setParams[drive.axis].call(Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_FORCE_LIMIT, drive.maxForce)
+			else:
+				setParams[drive.axis].call(Generic6DOFJoint3D.PARAM_ANGULAR_MOTOR_FORCE_LIMIT, 1.0e38)
+			setFlags[drive.axis].call(Generic6DOFJoint3D.FLAG_ENABLE_MOTOR, true)
+			setFlags[drive.axis].call(Generic6DOFJoint3D.FLAG_ENABLE_ANGULAR_SPRING, true)
 	return joint
 
 func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPhysicsData, curNode : Node3D, parentBody : CollisionObject3D) -> Node3D:
@@ -188,23 +209,17 @@ func _recurseCreateCollidersAndBodies(state : GLTFState, docData : PerDocumentPh
 				var filterJSON = state.json.extensions[extensionName].collisionFilters[filterIdx]
 				_setFilterInfo(parentBody, filterJSON)
 
-			# Finally, add the collider to the parent body
+			# Add the collider to the parent body
 			# Seems that if we use parentBody.create_shape_owner() now, the stored shapes will
 			# be lost when converted to a PackedScene. Instead, we have to add a CollisionShape3D
 			# which contains our shape resource.
-			if perNodeData.extensionData.has("physicsMaterial"):
-				curNode.add_child(collider)
+			curNode.add_child(collider)
 
+			if rbColliderData.has("physicsMaterial"):
 				# Godot currently only supports a per-body material, so this will
 				# end up using the material of the last-assigned node
-				var materialIndex = perNodeData.extensionData["physicsMaterial"]
+				var materialIndex = rbColliderData["physicsMaterial"]
 				parentBody.physics_material_override = createPhysicsMaterial(state, materialIndex)
-			else:
-				# Has no physics material set; this is a trigger object
-				var trigger = Area3D.new()
-				trigger.name = str(curNode.name, "_area3D")
-				trigger.add_child(collider)
-				curNode.add_child(trigger)
 
 	for c in originalChildren:
 		newChildren.append(_recurseCreateCollidersAndBodies(state, docData, c, parentBody))
@@ -300,10 +315,16 @@ func createColliderShape(state : GLTFState, jsonData : Dictionary) -> Shape3D:
 		return makeCapsuleShape(jsonData["capsule"])
 	if jsonData.has("cylinder"):
 		return makeCylinderShape(jsonData["cylinder"])
-	if jsonData.has("convex"):
-		return makeConvexShape(state, jsonData["convex"])
-	if jsonData.has("trimesh"):
-		return makeTriMeshShape(state, jsonData["trimesh"])
+	if jsonData.has("mesh"):
+		var isConvex = false
+		if jsonData.has("extensions") and jsonData["extensions"].has(extensionName):
+			var shapeExt = jsonData["extensions"][extensionName]
+			if shapeExt.get("convexHull"):
+				isConvex = true
+		if isConvex:
+			return makeConvexShape(state, jsonData["mesh"])
+		else:
+			return makeTriMeshShape(state, jsonData["mesh"])
 	print_debug("Unhandled collider type", jsonData)
 	return null
 
